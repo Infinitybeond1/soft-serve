@@ -7,7 +7,7 @@ WORKDIR /soft-serve
 
 COPY . .
 
-RUN pacman -Sy --noconfirm soft-serve
+RUN pacman -Sy --noconfirm git base-devel && git clone https://aur.archlinux.org/soft-serve-git.git && cd soft-serve-git && makepkg -si
 
 # Environment variables
 ENV SOFT_SERVE_PORT "8080" 
