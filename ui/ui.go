@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/soft-serve/config"
@@ -94,10 +95,10 @@ func (ui *UI) ShortHelp() []key.Binding {
 	case loadedState:
 		b = append(b, ui.pages[ui.activePage].ShortHelp()...)
 	}
-	b = append(b,
-		ui.common.KeyMap.Quit,
-		ui.common.KeyMap.Help,
-	)
+	if !ui.IsFiltering() {
+		b = append(b, ui.common.KeyMap.Quit)
+	}
+	b = append(b, ui.common.KeyMap.Help)
 	return b
 }
 
@@ -110,10 +111,13 @@ func (ui *UI) FullHelp() [][]key.Binding {
 	case loadedState:
 		b = append(b, ui.pages[ui.activePage].FullHelp()...)
 	}
-	b = append(b, []key.Binding{
-		ui.common.KeyMap.Quit,
+	h := []key.Binding{
 		ui.common.KeyMap.Help,
-	})
+	}
+	if !ui.IsFiltering() {
+		h = append(h, ui.common.KeyMap.Quit)
+	}
+	b = append(b, h)
 	return b
 }
 
@@ -155,6 +159,16 @@ func (ui *UI) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// IsFiltering returns true if the selection page is filtering.
+func (ui *UI) IsFiltering() bool {
+	if ui.activePage == selectionPage {
+		if s, ok := ui.pages[selectionPage].(*selection.Selection); ok && s.FilterState() == list.Filtering {
+			return true
+		}
+	}
+	return false
+}
+
 // Update implements tea.Model.
 func (ui *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmds := make([]tea.Cmd, 0)
@@ -180,19 +194,21 @@ func (ui *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case key.Matches(msg, ui.common.KeyMap.Help):
 				cmds = append(cmds, footer.ToggleFooterCmd)
 			case key.Matches(msg, ui.common.KeyMap.Quit):
-				// Stop bubblezone background workers.
-				ui.common.Zone.Close()
-				return ui, tea.Quit
+				if !ui.IsFiltering() {
+					// Stop bubblezone background workers.
+					ui.common.Zone.Close()
+					return ui, tea.Quit
+				}
 			case ui.activePage == repoPage && key.Matches(msg, ui.common.KeyMap.Back):
 				ui.activePage = selectionPage
 				// Always show the footer on selection page.
 				ui.showFooter = true
 			}
 		case tea.MouseMsg:
-			if msg.Type == tea.MouseLeft {
+			switch msg.Type {
+			case tea.MouseLeft:
 				switch {
-				case ui.common.Zone.Get("repo-help").InBounds(msg),
-					ui.common.Zone.Get("footer").InBounds(msg):
+				case ui.common.Zone.Get("footer").InBounds(msg):
 					cmds = append(cmds, footer.ToggleFooterCmd)
 				}
 			}

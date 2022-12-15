@@ -53,6 +53,7 @@ type Styles struct {
 	HelpKey     lipgloss.Style
 	HelpValue   lipgloss.Style
 	HelpDivider lipgloss.Style
+	URLStyle    lipgloss.Style
 
 	Error      lipgloss.Style
 	ErrorTitle lipgloss.Style
@@ -257,6 +258,10 @@ func DefaultStyles() *Styles {
 		Foreground(lipgloss.Color("237")).
 		SetString(" • ")
 
+	s.URLStyle = lipgloss.NewStyle().
+		MarginLeft(1).
+		Foreground(lipgloss.Color("168"))
+
 	s.Error = lipgloss.NewStyle().
 		MarginTop(2)
 
@@ -439,7 +444,8 @@ func DefaultStyles() *Styles {
 		Background(lipgloss.Color("237")).
 		Foreground(lipgloss.Color("243"))
 
-	s.Tabs = lipgloss.NewStyle()
+	s.Tabs = lipgloss.NewStyle().
+		Height(1)
 
 	s.TabInactive = lipgloss.NewStyle()
 

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/soft-serve/config"
@@ -80,12 +81,17 @@ func New(cfg *config.Config, pk ssh.PublicKey, common common.Common) *Selection 
 func (s *Selection) getMargins() (wm, hm int) {
 	wm = 0
 	hm = s.common.Styles.Tabs.GetVerticalFrameSize() +
-		s.common.Styles.Tabs.GetHeight() +
-		2 // tabs margin see View()
-	if s.activePane == readmePane {
-		hm += 1 // readme statusbar
+		s.common.Styles.Tabs.GetHeight()
+	if s.activePane == selectorPane && s.IsFiltering() {
+		// hide tabs when filtering
+		hm = 0
 	}
 	return
+}
+
+// FilterState returns the current filter state.
+func (s *Selection) FilterState() list.FilterState {
+	return s.selector.FilterState()
 }
 
 // SetSize implements common.Component.
@@ -94,7 +100,12 @@ func (s *Selection) SetSize(width, height int) {
 	wm, hm := s.getMargins()
 	s.tabs.SetSize(width, height-hm)
 	s.selector.SetSize(width-wm, height-hm)
-	s.readme.SetSize(width-wm, height-hm)
+	s.readme.SetSize(width-wm, height-hm-1) // -1 for readme status line
+}
+
+// IsFiltering returns true if the selector is currently filtering.
+func (s *Selection) IsFiltering() bool {
+	return s.FilterState() == list.Filtering
 }
 
 // ShortHelp implements help.KeyMap.
@@ -120,49 +131,54 @@ func (s *Selection) ShortHelp() []key.Binding {
 
 // FullHelp implements help.KeyMap.
 func (s *Selection) FullHelp() [][]key.Binding {
+	b := [][]key.Binding{
+		{
+			s.common.KeyMap.Section,
+		},
+	}
 	switch s.activePane {
 	case readmePane:
 		k := s.readme.KeyMap
-		return [][]key.Binding{
-			{
-				k.PageDown,
-				k.PageUp,
-			},
-			{
-				k.HalfPageDown,
-				k.HalfPageUp,
-			},
-			{
-				k.Down,
-				k.Up,
-			},
-		}
+		b = append(b, []key.Binding{
+			k.PageDown,
+			k.PageUp,
+		})
+		b = append(b, []key.Binding{
+			k.HalfPageDown,
+			k.HalfPageUp,
+		})
+		b = append(b, []key.Binding{
+			k.Down,
+			k.Up,
+		})
 	case selectorPane:
 		copyKey := s.common.KeyMap.Copy
 		copyKey.SetHelp("c", "copy command")
 		k := s.selector.KeyMap
-		return [][]key.Binding{
-			{
+		if !s.IsFiltering() {
+			b[0] = append(b[0],
 				s.common.KeyMap.Select,
 				copyKey,
-				k.CursorUp,
-				k.CursorDown,
-			},
-			{
-				k.NextPage,
-				k.PrevPage,
-				k.GoToStart,
-				k.GoToEnd,
-			},
-			{
-				k.Filter,
-				k.ClearFilter,
-				k.CancelWhileFiltering,
-				k.AcceptWhileFiltering,
-			},
+			)
 		}
+		b = append(b, []key.Binding{
+			k.CursorUp,
+			k.CursorDown,
+		})
+		b = append(b, []key.Binding{
+			k.NextPage,
+			k.PrevPage,
+			k.GoToStart,
+			k.GoToEnd,
+		})
+		b = append(b, []key.Binding{
+			k.Filter,
+			k.ClearFilter,
+			k.CancelWhileFiltering,
+			k.AcceptWhileFiltering,
+		})
 	}
-	return [][]key.Binding{}
+	return b
 }
 
 // Init implements tea.Model.
@@ -281,7 +297,6 @@ func (s *Selection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (s *Selection) View() string {
 	var view string
 	wm, hm := s.getMargins()
-	hm++ // tabs margin
 	switch s.activePane {
 	case selectorPane:
 		ss := lipgloss.NewStyle().
@@ -302,9 +317,15 @@ func (s *Selection) View() string {
 			readmeStatus,
 		))
 	}
+	if s.activePane != selectorPane || s.FilterState() != list.Filtering {
+		tabs := s.common.Styles.Tabs.Render(s.tabs.View())
+		view = lipgloss.JoinVertical(lipgloss.Left,
+			tabs,
+			view,
+		)
+	}
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		s.common.Styles.Tabs.Render(s.tabs.View()),
 		view,
 	)
 }

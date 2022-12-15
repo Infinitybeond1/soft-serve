@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/soft-serve/config"
 	ggit "github.com/charmbracelet/soft-serve/git"
 	"github.com/charmbracelet/soft-serve/ui/common"
+	"github.com/charmbracelet/soft-serve/ui/components/footer"
 	"github.com/charmbracelet/soft-serve/ui/components/statusbar"
 	"github.com/charmbracelet/soft-serve/ui/components/tabs"
 	"github.com/charmbracelet/soft-serve/ui/git"
@@ -45,11 +46,11 @@ func (t tab) String() string {
 	}[t]
 }
 
-// CopyUrlMsg is a message to copy the URL of the current repository.
-type CopyUrlMsg struct{}
+// CopyURLMsg is a message to copy the URL of the current repository.
+type CopyURLMsg struct{}
 
-// ResetUrlMsg is a message to reset the URL string.
-type ResetUrlMsg struct{}
+// ResetURLMsg is a message to reset the URL string.
+type ResetURLMsg struct{}
 
 // UpdateStatusBarMsg updates the status bar.
 type UpdateStatusBarMsg struct{}
@@ -59,6 +60,9 @@ type RepoMsg git.GitRepo
 
 // RefMsg is a message that contains a git.Reference.
 type RefMsg *ggit.Reference
+
+// BackMsg is a message to go back to the previous view.
+type BackMsg struct{}
 
 // Repo is a view for a git repository.
 type Repo struct {
@@ -70,7 +74,7 @@ type Repo struct {
 	statusbar    *statusbar.StatusBar
 	panes        []common.Component
 	ref          *ggit.Reference
-	copyUrl      time.Time
+	copyURL      time.Time
 }
 
 // New returns a new Repo.
@@ -111,9 +115,7 @@ func (r *Repo) SetSize(width, height int) {
 	hm := r.common.Styles.Repo.Body.GetVerticalFrameSize() +
 		r.common.Styles.Repo.Header.GetHeight() +
 		r.common.Styles.Repo.Header.GetVerticalFrameSize() +
-		r.common.Styles.StatusBar.GetHeight() +
-		r.common.Styles.Tabs.GetHeight() +
-		r.common.Styles.Tabs.GetVerticalFrameSize()
+		r.common.Styles.StatusBar.GetHeight()
 	r.tabs.SetSize(width, height-hm)
 	r.statusbar.SetSize(width, height-hm)
 	for _, p := range r.panes {
@@ -198,22 +200,32 @@ func (r *Repo) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if r.selectedRepo != nil {
 			cmds = append(cmds, r.updateStatusBarCmd)
-			switch msg := msg.(type) {
-			case tea.MouseMsg:
-				if msg.Type == tea.MouseLeft {
-					id := fmt.Sprintf("%s-url", r.selectedRepo.Repo())
-					if r.common.Zone.Get(id).InBounds(msg) {
-						cmds = append(cmds, r.copyUrlCmd())
-					}
+			urlID := fmt.Sprintf("%s-url", r.selectedRepo.Repo())
+			if msg, ok := msg.(tea.MouseMsg); ok && r.common.Zone.Get(urlID).InBounds(msg) {
+				cmds = append(cmds, r.copyURLCmd())
+			}
+		}
+		switch msg := msg.(type) {
+		case tea.MouseMsg:
+			switch msg.Type {
+			case tea.MouseLeft:
+				switch {
+				case r.common.Zone.Get("repo-help").InBounds(msg):
+					cmds = append(cmds, footer.ToggleFooterCmd)
+				}
+			case tea.MouseRight:
+				switch {
+				case r.common.Zone.Get("repo-main").InBounds(msg):
+					cmds = append(cmds, backCmd)
 				}
 			}
 		}
-	case CopyUrlMsg:
+	case CopyURLMsg:
 		r.common.Copy.Copy(
 			git.RepoURL(r.cfg.Host, r.cfg.Port, r.selectedRepo.Repo()),
 		)
-	case ResetUrlMsg:
-		r.copyUrl = time.Time{}
+	case ResetURLMsg:
+		r.copyURL = time.Time{}
 	case ReadmeMsg:
 	case FileItemsMsg:
 		f, cmd := r.panes[filesTab].Update(msg)
@@ -277,11 +289,14 @@ func (r *Repo) View() string {
 		r.common.Styles.Tabs.GetVerticalFrameSize()
 	mainStyle := repoBodyStyle.
 		Height(r.common.Height - hm)
-	main := r.panes[r.activeTab].View()
+	main := r.common.Zone.Mark(
+		"repo-main",
+		mainStyle.Render(r.panes[r.activeTab].View()),
+	)
 	view := lipgloss.JoinVertical(lipgloss.Top,
 		r.headerView(),
 		r.tabs.View(),
-		mainStyle.Render(main),
+		main,
 		r.statusbar.View(),
 	)
 	return s.Render(view)
@@ -301,14 +316,11 @@ func (r *Repo) headerView() string {
 	} else {
 		desc = r.common.Styles.Repo.HeaderDesc.Render(desc)
 	}
-	// TODO move this into a style.
-	urlStyle := lipgloss.NewStyle().
-		MarginLeft(1).
-		Foreground(lipgloss.Color("168")).
+	urlStyle := r.common.Styles.URLStyle.Copy().
 		Width(r.common.Width - lipgloss.Width(desc) - 1).
 		Align(lipgloss.Right)
 	url := git.RepoURL(cfg.Host, cfg.Port, r.selectedRepo.Repo())
-	if !r.copyUrl.IsZero() && r.copyUrl.Add(time.Second).After(time.Now()) {
+	if !r.copyURL.IsZero() && r.copyURL.Add(time.Second).After(time.Now()) {
 		url = "copied!"
 	}
 	url = common.TruncateString(url, r.common.Width-lipgloss.Width(desc)-1)
@@ -369,18 +381,22 @@ func (r *Repo) updateModels(msg tea.Msg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (r *Repo) copyUrlCmd() tea.Cmd {
-	r.copyUrl = time.Now()
+func (r *Repo) copyURLCmd() tea.Cmd {
+	r.copyURL = time.Now()
 	return tea.Batch(
 		func() tea.Msg {
-			return CopyUrlMsg{}
+			return CopyURLMsg{}
 		},
 		tea.Tick(time.Second, func(time.Time) tea.Msg {
-			return ResetUrlMsg{}
+			return ResetURLMsg{}
 		}),
 	)
 }
 
 func updateStatusBarCmd() tea.Msg {
 	return UpdateStatusBarMsg{}
+}
+
+func backCmd() tea.Msg {
+	return BackMsg{}
 }

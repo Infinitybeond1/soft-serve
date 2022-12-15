@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"log"
@@ -17,6 +18,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/charmbracelet/soft-serve/git"
 	"github.com/charmbracelet/soft-serve/server/config"
 	"github.com/go-git/go-billy/v5/memfs"
 	ggit "github.com/go-git/go-git/v5"
@@ -25,35 +27,41 @@ import (
 	"github.com/go-git/go-git/v5/storage/memory"
 )
 
+var (
+	// ErrNoConfig is returned when a repo has no config file.
+	ErrNoConfig = errors.New("no config file found")
+)
+
 // Config is the Soft Serve configuration.
 type Config struct {
-	Name         string         `yaml:"name"`
-	Host         string         `yaml:"host"`
-	Port         int            `yaml:"port"`
-	AnonAccess   string         `yaml:"anon-access"`
-	AllowKeyless bool           `yaml:"allow-keyless"`
-	Users        []User         `yaml:"users"`
-	Repos        []MenuRepo     `yaml:"repos"`
-	Source       *RepoSource    `yaml:"-"`
-	Cfg          *config.Config `yaml:"-"`
+	Name         string         `yaml:"name" json:"name"`
+	Host         string         `yaml:"host" json:"host"`
+	Port         int            `yaml:"port" json:"port"`
+	AnonAccess   string         `yaml:"anon-access" json:"anon-access"`
+	AllowKeyless bool           `yaml:"allow-keyless" json:"allow-keyless"`
+	Users        []User         `yaml:"users" json:"users"`
+	Repos        []RepoConfig   `yaml:"repos" json:"repos"`
+	Source       *RepoSource    `yaml:"-" json:"-"`
+	Cfg          *config.Config `yaml:"-" json:"-"`
 	mtx          sync.Mutex
 }
 
 // User contains user-level configuration for a repository.
 type User struct {
-	Name        string   `yaml:"name"`
-	Admin       bool     `yaml:"admin"`
-	PublicKeys  []string `yaml:"public-keys"`
-	CollabRepos []string `yaml:"collab-repos"`
+	Name        string   `yaml:"name" json:"name"`
+	Admin       bool     `yaml:"admin" json:"admin"`
+	PublicKeys  []string `yaml:"public-keys" json:"public-keys"`
+	CollabRepos []string `yaml:"collab-repos" json:"collab-repos"`
 }
 
-// Repo contains repository configuration information.
-type MenuRepo struct {
-	Name    string `yaml:"name"`
-	Repo    string `yaml:"repo"`
-	Note    string `yaml:"note"`
-	Private bool   `yaml:"private"`
-	Readme  string `yaml:"readme"`
+// RepoConfig is a repository configuration.
+type RepoConfig struct {
+	Name    string   `yaml:"name" json:"name"`
+	Repo    string   `yaml:"repo" json:"repo"`
+	Note    string   `yaml:"note" json:"note"`
+	Private bool     `yaml:"private" json:"private"`
+	Readme  string   `yaml:"readme" json:"readme"`
+	Collabs []string `yaml:"collabs" json:"collabs"`
 }
 
 // NewConfig creates a new internal Config struct.
@@ -88,10 +96,11 @@ func NewConfig(cfg *config.Config) (*Config, error) {
 	c.Host = cfg.Host
 	c.Port = port
 	c.Source = rs
+	// Grant read-write access when no keys are provided.
 	if len(pks) == 0 {
 		anonAccess = "read-write"
 	} else {
-		anonAccess = "no-access"
+		anonAccess = "read-only"
 	}
 	if host == "" {
 		displayHost = "localhost"
@@ -121,6 +130,44 @@ func NewConfig(cfg *config.Config) (*Config, error) {
 	return c, nil
 }
 
+// readConfig reads the config file for the repo. All config files are stored in
+// the config repo.
+func (cfg *Config) readConfig(repo string, v interface{}) error {
+	cr, err := cfg.Source.GetRepo("config")
+	if err != nil {
+		return err
+	}
+	// Parse YAML files
+	var cy string
+	for _, ext := range []string{".yaml", ".yml"} {
+		cy, _, err = cr.LatestFile(repo + ext)
+		if err != nil && !errors.Is(err, git.ErrFileNotFound) {
+			return err
+		} else if err == nil {
+			break
+		}
+	}
+	// Parse JSON files
+	cj, _, err := cr.LatestFile(repo + ".json")
+	if err != nil && !errors.Is(err, git.ErrFileNotFound) {
+		return err
+	}
+	if cy != "" {
+		err = yaml.Unmarshal([]byte(cy), v)
+		if err != nil {
+			return err
+		}
+	} else if cj != "" {
+		err = json.Unmarshal([]byte(cj), v)
+		if err != nil {
+			return err
+		}
+	} else {
+		return ErrNoConfig
+	}
+	return nil
+}
+
 // Reload reloads the configuration.
 func (cfg *Config) Reload() error {
 	cfg.mtx.Lock()
@@ -129,28 +176,44 @@ func (cfg *Config) Reload() error {
 	if err != nil {
 		return err
 	}
-	cr, err := cfg.Source.GetRepo("config")
-	if err != nil {
-		return err
+	if err := cfg.readConfig("config", cfg); err != nil {
+		return fmt.Errorf("error reading config: %w", err)
 	}
-	cs, _, err := cr.LatestFile("config.yaml")
-	if err != nil {
-		return err
-	}
-	err = yaml.Unmarshal([]byte(cs), cfg)
-	if err != nil {
-		return fmt.Errorf("bad yaml in config.yaml: %s", err)
+	// sanitize repo configs
+	repos := make(map[string]RepoConfig, 0)
+	for _, r := range cfg.Repos {
+		repos[r.Repo] = r
 	}
 	for _, r := range cfg.Source.AllRepos() {
-		name := r.Name()
+		var rc RepoConfig
+		repo := r.Repo()
+		if repo == "config" {
+			continue
+		}
+		if err := cfg.readConfig(repo, &rc); err != nil {
+			if !errors.Is(err, ErrNoConfig) {
+				log.Printf("error reading config: %v", err)
+			}
+			continue
+		}
+		repos[r.Repo()] = rc
+	}
+	cfg.Repos = make([]RepoConfig, 0, len(repos))
+	for n, r := range repos {
+		r.Repo = n
+		cfg.Repos = append(cfg.Repos, r)
+	}
+	// Populate readmes and descriptions
+	for _, r := range cfg.Source.AllRepos() {
+		repo := r.Repo()
 		err = r.UpdateServerInfo()
 		if err != nil {
-			log.Printf("error updating server info for %s: %s", name, err)
+			log.Printf("error updating server info for %s: %s", repo, err)
 		}
 		pat := "README*"
 		rp := ""
 		for _, rr := range cfg.Repos {
-			if name == rr.Repo {
+			if repo == rr.Repo {
 				rp = rr.Readme
 				r.name = rr.Name
 				r.description = rr.Note
@@ -164,7 +227,7 @@ func (cfg *Config) Reload() error {
 		rm := ""
 		fc, fp, _ := r.LatestFile(pat)
 		rm = fc
-		if name == "config" {
+		if repo == "config" {
 			md, err := templatize(rm, cfg)
 			if err != nil {
 				return err
@@ -254,15 +317,6 @@ func (cfg *Config) createDefaultConfigRepo(yaml string) error {
 		return err
 	}
 	return cfg.Reload()
-}
-
-func (cfg *Config) isPrivate(repo string) bool {
-	for _, r := range cfg.Repos {
-		if r.Repo == repo {
-			return r.Private
-		}
-	}
-	return false
 }
 
 func templatize(mdt string, tmpl interface{}) (string, error) {

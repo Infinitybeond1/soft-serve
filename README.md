@@ -61,15 +61,18 @@ pacman -S soft-serve
 nix-env -iA nixpkgs.soft-serve
 
 # Debian/Ubuntu
-echo 'deb [trusted=yes] https://repo.charm.sh/apt/ /' | sudo tee /etc/apt/sources.list.d/charm.list
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
+echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list
 sudo apt update && sudo apt install soft-serve
 
-# Fedora
+# Fedora/RHEL
 echo '[charm]
 name=Charm
 baseurl=https://repo.charm.sh/yum/
 enabled=1
-gpgcheck=0' | sudo tee /etc/yum.repos.d/charm.repo
+gpgcheck=1
+gpgkey=https://repo.charm.sh/yum/gpg.key' | sudo tee /etc/yum.repos.d/charm.repo
 sudo yum install soft-serve
 ```
 
@@ -103,7 +106,7 @@ name: Soft Serve
 
 # The host and port to display in the TUI. You may want to change this if your
 # server is accessible from a different host and/or port that what it's
-# actually listening on (for example, if it's behind a reverse proxy).
+# actually listening on (for example, if it's behind a port forwarding router).
 host: localhost
 port: 23231
 
@@ -130,8 +133,9 @@ repos:
     private: true
     note: "A private repo"
 
-# Authorized users. Admins have full access to all repos. Regular users
-# can read all repos and push to their collab-repos.
+# Authorized users. Admins have full access to all repos. Private repos are only
+# accessible by admins and collab users. Regular users can read public repos
+# based on your anon-access setting.
 users:
   - name: Beatrice
     admin: true
@@ -267,7 +271,7 @@ admin-access` in the configuration.
 
 ## Managing Repos
 
-`.repos` and `.ssh` directories are created when you first run `soft` at the paths specified for the `SOFT_SERVE_KEY_PATH` and `SOFT_SERVE_REPO_PATH` environment variables. 
+`.repos` and `.ssh` directories are created when you first run `soft` at the paths specified for the `SOFT_SERVE_KEY_PATH` and `SOFT_SERVE_REPO_PATH` environment variables.
 It's recommended to have a dedicated directory for your soft-serve repos and config.
 
 ### Deleting a Repo
@@ -277,7 +281,7 @@ To delete a repo from your soft serve server, you'll have to remove the repo fro
 ### Renaming a Repo
 
 To rename a repo's display name in the menu, change its name in the config.yaml file for your soft serve server.
-By default, the display name will be the repository name. 
+By default, the display name will be the repository name.
 
 ## A note about RSA keys
 
@@ -304,8 +308,8 @@ If you’re curious about the inner workings of this problem have a look at:
 We’d love to hear your thoughts on this project. Feel free to drop us a note!
 
 * [Twitter](https://twitter.com/charmcli)
-* [The Fediverse](https://mastodon.technology/@charm)
-* [Slack](https://charm.sh/slack)
+* [The Fediverse](https://mastodon.social/@charmcli)
+* [Discord](https://charm.sh/chat)
 
 ## License
 
