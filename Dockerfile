@@ -1,4 +1,4 @@
-FROM ubuntu:latest
+FROM archlinux:latest
 
 # Create directories
 WORKDIR /soft-serve
@@ -7,8 +7,7 @@ WORKDIR /soft-serve
 
 COPY . .
 
-RUN echo 'deb [trusted=yes] https://repo.charm.sh/apt/ /' | tee /etc/apt/sources.list.d/charm.list
-RUN apt update && apt install soft-serve
+RUN pacman -S soft-serve
 
 # Environment variables
 ENV SOFT_SERVE_KEY_PATH "/soft-serve/ssh/soft_serve_server_ed25519"
