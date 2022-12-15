@@ -75,4 +75,4 @@ require (
 )
 
 // see https://github.com/sergi/go-diff/issues/123
-exclude github.com/sergi/go-diff v1.2.0
+//exclude github.com/sergi/go-diff v1.2.0
