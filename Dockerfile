@@ -7,7 +7,7 @@ WORKDIR /soft-serve
 
 COPY . .
 
-RUN go install github.com/charmbracelet/soft-serve/cmd/soft@latest
+RUN go install github.com/infinitybeond/soft-serve/cmd/soft@latest
 
 # Environment variables
 ENV SOFT_SERVE_KEY_PATH "/soft-serve/ssh/soft_serve_server_ed25519"
