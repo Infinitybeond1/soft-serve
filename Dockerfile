@@ -7,7 +7,7 @@ WORKDIR /soft-serve
 
 COPY . .
 
-RUN pacman -S soft-serve
+RUN pacman -Sy soft-serve
 
 # Environment variables
 ENV SOFT_SERVE_KEY_PATH "/soft-serve/ssh/soft_serve_server_ed25519"
