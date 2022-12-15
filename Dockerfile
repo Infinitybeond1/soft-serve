@@ -13,7 +13,7 @@ RUN pacman -Sy --noconfirm soft-serve
 ENV SOFT_SERVE_PORT "8080" 
 ENV SOFT_SERVE_KEY_PATH "/soft-serve/ssh/soft_serve_server_ed25519"
 ENV SOFT_SERVE_INITIAL_ADMIN_KEY ""
-ENV SOFT_SERVE_REPO_PATH "/soft-serve/repos"
+ENV SOFT_SERVE_REPO_PATH ".repos"
 
 # Expose ports
 # SSH
