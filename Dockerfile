@@ -20,4 +20,4 @@ ENV SOFT_SERVE_REPO_PATH ".repos"
 EXPOSE 8080/tcp
 
 # Set the default command
-ENTRYPOINT [ "soft" ]
+ENTRYPOINT [ "soft serve" ]
