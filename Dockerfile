@@ -7,7 +7,7 @@ COPY soft /usr/local/bin/soft
 # Create directories
 WORKDIR /soft-serve
 # Expose data volume
-VOLUME /soft-serve
+#VOLUME /soft-serve
 
 # Environment variables
 ENV SOFT_SERVE_KEY_PATH "/soft-serve/ssh/soft_serve_server_ed25519"
