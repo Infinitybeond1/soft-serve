@@ -1,4 +1,4 @@
-FROM golang:latest
+FROM ubuntu:latest
 
 # Create directories
 WORKDIR /soft-serve
@@ -7,7 +7,8 @@ WORKDIR /soft-serve
 
 COPY . .
 
-RUN go install github.com/infinitybeond/soft-serve/cmd/soft@latest
+RUN echo 'deb [trusted=yes] https://repo.charm.sh/apt/ /' | sudo tee /etc/apt/sources.list.d/charm.list
+RUN sudo apt update && sudo apt install soft-serve
 
 # Environment variables
 ENV SOFT_SERVE_KEY_PATH "/soft-serve/ssh/soft_serve_server_ed25519"
